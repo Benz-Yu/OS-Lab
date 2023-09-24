@@ -101,3 +101,4 @@ A：1、***csrw sscratch, sp***这条指令将栈指针(sp)的值写入到名为
 
 ### 扩展练习Challenge3：完善异常中断
 编程完善在触发一条非法指令异常mret，在 kern/trap/trap.c的异常处理函数中捕获，并对其进行处理，简单输出异常类型和异常指令触发地址，即“Illegal instruction caught at 0x(地址)”，“ebreak caught at 0x（地址）”与“Exception type:Illegal instruction"，“Exception type: breakpoint”。
+思路：在init.c中使用内联汇编调用mret指令，被trap.c中的trap捕获后交由exception_handler处理，在该函数中输出相关信息
