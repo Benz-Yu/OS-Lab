@@ -1,4 +1,5 @@
 ﻿#  操作系统lab0.5+lab1实验报告
+***小组仓库：https://github.com/Benz-Yu/OS-Lab***
 ##  lab 0.5
 #### 本实验中重要知识点：
 `gdb调试方法`  `RISCV机器启动流程`
