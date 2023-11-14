@@ -13,7 +13,8 @@ static size_t buddy_physical_size;
 static size_t buddy_virtual_size;
 static size_t buddy_segment_size;
 static size_t buddy_alloc_size;
-static size_t *buddy_segment;
+static size_t *
+buddy_segment;
 static struct Page *buddy_physical;
 static struct Page *buddy_alloc;
 
@@ -35,30 +36,7 @@ static struct Page *buddy_alloc;
 #define UINT32_MASK(a)          (UINT32_SHR_OR(UINT32_SHR_OR(UINT32_SHR_OR(UINT32_SHR_OR(UINT32_SHR_OR(a,1),2),4),8),16))    
 #define UINT32_REMAINDER(a)     ((a)&(UINT32_MASK(a)>>1))
 #define UINT32_ROUND_UP(a)      (UINT32_REMAINDER(a)?(((a)-UINT32_REMAINDER(a))<<1):(a))
-#define UINT32_ROUND_DOWN(a)    UINT32_ROUND_UP(a)/2
-/*#define UINT32_ROUND_UP(num) \
-    do { \
-        (num)--; \
-        (num) |= (num) >> 1; \
-        (num) |= (num) >> 2; \
-        (num) |= (num) >> 4; \
-        (num) |= (num) >> 8; \
-        (num) |= (num) >> 16; \
-        (num)++; \
-    } while (0)
-
-#define UINT32_ROUND_DOWN(num) \  
-    do { \  
-        (num) |= (num) >> 1; \  
-        (num) |= (num) >> 2; \  
-        (num) |= (num) >> 4; \  
-        (num) |= (num) >> 8; \  
-        (num) |= (num) >> 16; \
-        (num)++; \
-        (num)/=2; \  
-    } while (0)  */
-
-
+#define UINT32_ROUND_DOWN(a)    (UINT32_REMAINDER(a)?((a)-UINT32_REMAINDER(a)):(a))
 
 static void
 buddy_init_size(size_t n) {
