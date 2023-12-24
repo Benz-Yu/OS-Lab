@@ -105,6 +105,13 @@ alloc_proc(void) {
      *       uint32_t flags;                             // Process flag
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
+     //LAB5 YOUR CODE : (update LAB4 steps)2113870 2113683 1910109
+    /*
+     * below fields(add in LAB5) in proc_struct need to be initialized
+     *       uint32_t wait_state;                        // waiting state
+     *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
+     */
+    
         proc->state = PROC_UNINIT;
         proc->pid = -1;
         proc->runs = 0;
@@ -117,32 +124,16 @@ alloc_proc(void) {
         proc->cr3 = boot_cr3;
         proc->flags = 0;
         memset(proc->name, 0, PROC_NAME_LEN);
-     //LAB5 YOUR CODE : (update LAB4 steps)2113870 2113683 1910109
-    /*
-     * below fields(add in LAB5) in proc_struct need to be initialized
-     *       uint32_t wait_state;                        // waiting state
-     *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
-     */
         proc->wait_state = 0;
-        proc->cptr = NULL;
-        proc->yptr = NULL;
-        proc->optr = NULL;
-    //LAB6 YOUR CODE : (update LAB5 steps)
-    /*
-     * below fields(add in LAB6) in proc_struct need to be initialized
-     *     struct run_queue *rq;                       // running queue contains Process
-     *     list_entry_t run_link;                      // the entry linked in run queue
-     *     int time_slice;                             // time slice for occupying the CPU
-     *     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
-     *     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
-     *     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
-     */
-
-     //LAB8 YOUR CODE : (update LAB6 steps)
-      /*
-     * below fields(add in LAB6) in proc_struct need to be initialized
-     *       struct files_struct * filesp;                file struct point        
-     */
+        proc->cptr = proc->optr = proc->yptr = NULL;
+        proc->rq = NULL;
+        list_init(&(proc->run_link));
+        proc->time_slice = 0;
+        proc->lab6_run_pool.left = proc->lab6_run_pool.right = proc->lab6_run_pool.parent = NULL;
+        proc->lab6_stride = 0;
+        proc->lab6_priority = 0;
+        proc->filesp = NULL;
+    
     }
     return proc;
 }
@@ -230,34 +221,15 @@ get_pid(void) {
 void
 proc_run(struct proc_struct *proc) {
     if (proc != current) {
-         // LAB4:EXERCISE3 YOUR CODE 2113870 2113683 1910109
-        /*
-        * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
-        * MACROs or Functions:
-        *   local_intr_save():        Disable interrupts
-        *   local_intr_restore():     Enable Interrupts
-        *   lcr3():                   Modify the value of CR3 register
-        *   switch_to():              Context switching between two processes
-        */
         bool intr_flag;
+        struct proc_struct *prev = current, *next = proc;
         local_intr_save(intr_flag);
-
-        struct proc_struct *prev = current;
-        struct proc_struct *next = proc;
-
-        current = proc;
-        lcr3(proc->cr3);
-        switch_to(&(prev->context), &(next->context));
-
+        {
+            current = proc;
+            lcr3(next->cr3);
+            switch_to(&(prev->context), &(next->context));
+        }
         local_intr_restore(intr_flag);
-       //LAB8 YOUR CODE : (update LAB4 steps)
-      /*
-     * below fields(add in LAB6) in proc_struct need to be initialized
-    *       before switch_to();you should flush the tlb
-    *        MACROs or Functions:
-     *       flush_tlb():          flush the tlb        
-     */
-
     }
 }
 
@@ -401,7 +373,7 @@ copy_thread(struct proc_struct *proc, uintptr_t esp, struct trapframe *tf) {
 
     // Set a0 to 0 so a child process knows it's just forked
     proc->tf->gpr.a0 = 0;
-    proc->tf->gpr.sp = (esp == 0) ? (uintptr_t)proc->tf : esp;
+    proc->tf->gpr.sp = (esp == 0) ? (uintptr_t)proc->tf - 4 : esp;
 
     proc->context.ra = (uintptr_t)forkret;
     proc->context.sp = (uintptr_t)(proc->tf);
@@ -462,8 +434,8 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
         goto fork_out;
     }
     ret = -E_NO_MEM;
-    //LAB4:EXERCISE2 YOUR CODE 2113870 2113683 1910109
-    //:EXERCISE2 YOUR CODE  HINT:how to copy the fs in parent's proc_struct?
+    //LAB4:EXERCISE2 YOUR CODE2113870 2113683 1910109
+    //LAB8:EXERCISE2 YOUR CODE  HINT:how to copy the fs in parent's proc_struct?2113870 2113683 1910109
     /*
      * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
      * MACROs or Functions:
@@ -489,7 +461,7 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    6. call wakeup_proc to make the new child process RUNNABLE
     //    7. set ret vaule using child proc's pid
 
-  //LAB5 YOUR CODE : (update LAB4 steps) 2113870 2113683 1910109
+  //LAB5 YOUR CODE : (update LAB4 steps)
    /* Some Functions
     *    set_links:  set the relation links of process.  ALSO SEE: remove_links:  lean the relation links of process
     *    -------------------
@@ -499,14 +471,18 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     if ((proc = alloc_proc()) == NULL) {
         goto fork_out;
     }
+
     proc->parent = current;
     assert(current->wait_state == 0);
 
     if (setup_kstack(proc) != 0) {
         goto bad_fork_cleanup_proc;
     }
-    if (copy_mm(clone_flags, proc) != 0) {
+    if (copy_files(clone_flags, proc) != 0) { //for LAB8
         goto bad_fork_cleanup_kstack;
+    }
+    if (copy_mm(clone_flags, proc) != 0) {
+        goto bad_fork_cleanup_fs;
     }
     copy_thread(proc, stack, tf);
 
@@ -518,12 +494,10 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
         set_links(proc);
     }
     local_intr_restore(intr_flag);
+
     wakeup_proc(proc);
+
     ret = proc->pid;
-    if (copy_files(clone_flags, proc) != 0) { //for LAB8
-        goto bad_fork_cleanup_kstack;
-    }
-   
 fork_out:
     return ret;
 
@@ -558,7 +532,6 @@ do_exit(int error_code) {
             mm_destroy(mm);
         }
         current->mm = NULL;
-        put_files(current);
     }
     current->state = PROC_ZOMBIE;
     current->exit_code = error_code;
@@ -610,7 +583,7 @@ load_icode_read(int fd, void *buf, size_t len, off_t offset) {
 static int
 load_icode(int fd, int argc, char **kargv) {
     /* LAB8:EXERCISE2 YOUR CODE  HINT:how to load the file with handler fd  in to process's memory? how to setup argc/argv?
-     * MACROs or Functions:
+     * MACROs or Functions:2113870 2113683 1910109
      *  mm_create        - create a mm
      *  setup_pgdir      - setup pgdir in mm
      *  load_icode_read  - read raw data content of program file
@@ -618,8 +591,7 @@ load_icode(int fd, int argc, char **kargv) {
      *  pgdir_alloc_page - allocate new memory for  TEXT/DATA/BSS/stack parts
      *  lcr3             - update Page Directory Addr Register -- CR3
      */
-  //You can Follow the code form LAB5 which you have completed  to complete 
- /* (1) create a new mm for current process 
+  /* (1) create a new mm for current process
      * (2) create a new PDT, and mm->pgdir= kernel virtual addr of PDT
      * (3) copy TEXT/DATA/BSS parts in binary to memory space of process
      *    (3.1) read raw data content in file and resolve elfhdr
@@ -984,12 +956,12 @@ kernel_execve(const char *name, const char **argv) {
     }
     asm volatile(
         "li a0, %1\n"
-        "ld a1, %2\n"
-        "ld a2, %3\n"
-        "ld a3, %4\n"
-   	    "li a7, 10\n"
+       "lw a1, %2\n"
+        "lw a2, %3\n"
+        "lw a3, %4\n"
+   	"li a7, 10\n"
         "ebreak\n"
-        "sd a0, %0\n"
+        "sw a0, %0\n"
         : "=m"(ret)
         : "i"(SYS_exec), "m"(name), "m"(argc), "m"(argv)
         : "memory");
