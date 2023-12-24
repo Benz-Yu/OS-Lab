@@ -599,7 +599,8 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
      * (3) If end position isn't aligned with the last block, Rd/Wr some content from begin to the (endpos % SFS_BLKSIZE) of the last block
 	 *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_buf_op	
 	*/
-
+  // (1)第一部分，用offset % SFS_BLKSIZE判断是否对齐，
+  // 若没有对齐，则需要特殊处理，首先通过sfs_bmap_load_nolock找到这一块的inode，然后将这部分数据读出。
     if ((blkoff = offset % SFS_BLKSIZE) != 0) {
         size = (nblks != 0) ? (SFS_BLKSIZE - blkoff) : (endpos - offset);
         if ((ret = sfs_bmap_load_nolock(sfs, sin, blkno, &ino)) != 0) {
@@ -643,6 +644,8 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
         }
         alen += size;
     }
+
+    
 
 out:
     *alenp = alen;

@@ -451,7 +451,7 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
         }
     } else {// if this pte is a swap entry, then load data from disk to a page with phy addr
            // and call page_insert to map the phy addr with logical addr
-        /*LAB3 EXERCISE 3: 2113870 2113683 1910109
+        /*LAB3 EXERCISE 3: YOUR CODE 2113870 2113683 1910109
         * 请你根据以下信息提示，补充函数
         * 现在我们认为pte是一个交换条目，那我们应该从磁盘加载数据并放到带有phy addr的页面，
         * 并将phy addr与逻辑addr映射，触发交换管理器记录该页面的访问情况
@@ -463,37 +463,29 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
         *    page_insert ： 建立一个Page的phy addr与线性addr la的映射
         *    swap_map_swappable ： 设置页面可交换
         */
-        if(swap_init_ok) {
-            struct Page *page=NULL;
+     if (swap_init_ok) {
+            struct Page *page = NULL;
             // 你要编写的内容在这里，请基于上文说明以及下文的英文注释完成代码编写
             //(1）According to the mm AND addr, try
             //to load the content of right disk page
             //into the memory which page managed.
+            // swap_in(mm, addr, &page);
+            // 根据 mm 和 addr，将适当的磁盘页的内容加载到由 page 管理的内存中
+            if (swap_in(mm, addr, &page) != 0) {
+                cprintf("swap_in in do_pgfault failed\n");
+                goto failed;
+            }
             //(2) According to the mm,
             //addr AND page, setup the
             //map of phy addr <--->
             //logical addr
-            //(3) make the page swappable.
-            /*if ((ret = swap_in(mm, addr, &page)) != 0) {
-                cprintf("swap_in in do_pgfault failed\n");
-                goto failed;
-            }    
-            page_insert(mm->pgdir, page, addr, perm);
-            swap_map_swappable(mm, addr, page, 1);*/
-            int r = swap_in(mm, addr, &page);
-            
-            if (r != 0) {
-                cprintf("swap_in in do_pgfault failed\n");
-                goto failed;
-            }
-
-            r = page_insert(mm->pgdir, page, addr, perm);
-
-            if (r != 0) {
+            // page_insert(mm->pgdir, page, addr, perm);
+            // 建立物理地址（page->phy_addr）与逻辑地址（addr）的映射关系
+            if (page_insert(mm->pgdir, page, addr, perm) != 0) {
                 cprintf("page_insert in do_pgfault failed\n");
                 goto failed;
             }
-
+            //(3) make the page swappable.
             swap_map_swappable(mm, addr, page, 1);
             page->pra_vaddr = addr;
         } else {

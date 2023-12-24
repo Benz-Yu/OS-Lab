@@ -335,7 +335,7 @@ struct Page *get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store) {
 //                - and clean(invalidate) pte which is related linear address la
 // note: PT is changed, so the TLB need to be invalidate
 static inline void page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
-    /*LAB2 EXERCISE 3: YOUR CODE 2113870 2113683 1910109
+    /*LAB2 EXERCISE 3: YOUR CODE 
      * Please check if ptep is valid, and tlb must be manually updated if
      * mapping is updated
      *
@@ -472,7 +472,7 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
             assert(page != NULL);
             assert(npage != NULL);
             int ret = 0;
-            /* LAB5:EXERCISE2 :2113870 2113683 1910109
+            /* LAB5:EXERCISE2 YOUR CODE 2113870 2113683 1910109
              * replicate content of page to npage, build the map of phy addr of
              * nage with the linear addr start
              *
@@ -490,8 +490,8 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
              * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
              * (4) build the map of phy addr of  nage with the linear addr start
              */
-            void *kva_src = page2kva(page);
-            void *kva_dst = page2kva(npage);
+            void * kva_src = page2kva(page);
+            void * kva_dst = page2kva(npage);
             memcpy(kva_dst, kva_src, PGSIZE);
             ret = page_insert(to, npage, start, perm);
             assert(ret == 0);
