@@ -1,5 +1,5 @@
 
-obj/__user_faultread.out：     文件格式 elf64-littleriscv
+obj/__user_faultread.out:     file format elf64-littleriscv
 
 
 Disassembly of section .text:

@@ -630,6 +630,29 @@ load_icode(int fd, int argc, char **kargv) {
      * (6) setup uargc and uargv in user stacks
      * (7) setup trapframe for user environment
      * (8) if up steps failed, you should cleanup the env.
+     * - 
+     * 
+     * 1、建立内存管理器，创建一个新的mm（内存管理）结构体来管理当前进程的内存。
+
+- 2、建立页目录，创建一个新的页目录表（PDT），并将mm的pgdir字段设置为页目录表的内核虚拟地址。
+
+- 3、将程序文件的TEXT（代码）、DATA（数据）和BSS（未初始化数据）部分复制到进程的内存空间中：
+    - 读取程序文件的原始数据内容，并解析ELF头部信息。
+    - 根据ELF头部信息，在程序文件中读取原始数据内容，并根据ELF头部中的程序头部信息进行解析。
+    - 调用mm_map函数来创建与TEXT和DATA相关的虚拟内存区域（VMA）。
+    - 调用pgdir_alloc_page函数为TEXT和DATA部分分配内存页面，并将文件内容复制到新分配的页面中。
+    - 调用pgdir_alloc_page函数为BSS部分分配内存页面，并将页面中的内容清零。
+
+- 4、调用mm_map函数设置用户栈，并将参数放入用户栈中，建立并初始化用户堆栈
+
+- 5、设置当前进程的mm结构、页目录表（使用lcr3宏定义）。
+
+- 6、在用户栈中设置uargc和uargv参数，并且处理用户栈中传入的参数，
+
+- 7、最后很关键的一步是设置用户进程的中断帧（trapframe）。
+
+- 8、如果在上述步骤中出现错误，需要清理环境。
+
      */
     assert(argc >= 0 && argc <= EXEC_MAX_ARG_NUM);
     if (current->mm != NULL) {
@@ -649,10 +672,12 @@ load_icode(int fd, int argc, char **kargv) {
     //(3) copy TEXT/DATA section, build BSS parts in binary to memory space of process
     struct Page *page;
     //(3.1) get the file header of the bianry program (ELF format)
-    struct elfhdr __elf;
-    struct elfhdr *elf = &__elf;
-    if((ret = load_icode_read(fd, elf, sizeof(struct elfhdr), 0)) != 0)
-        goto bad_elf_cleanup_pgdir;
+    struct elfhdr __elf; // 创建一个临时的 ELF 文件头结构体
+    struct elfhdr *elf = &__elf; // 初始化 elf 指针为临时 ELF 文件头的地址
+
+    // 从可执行程序文件中读取 ELF 文件头的内容，偏移量为 0
+    if ((ret = load_icode_read(fd, elf, sizeof(struct elfhdr), 0)) != 0)
+        goto bad_elf_cleanup_pgdir; // 如果读取失败，跳转到错误处理部分
     // struct elfhdr *elf = (struct elfhdr *)binary;
     //(3.2) get the entry of the program section headers of the bianry program (ELF format)
     //struct proghdr *ph = (struct proghdr *)(binary + elf->e_phoff);
@@ -661,24 +686,28 @@ load_icode(int fd, int argc, char **kargv) {
         ret = -E_INVAL_ELF;
         goto bad_elf_cleanup_pgdir;
     }
+    // 创建一个临时的 proghdr 结构体指针，并初始化 ph 指针
     struct proghdr __ph, *ph = &__ph;
     uint32_t vm_flags, perm, phnum;
     for (phnum = 0; phnum < elf->e_phnum; phnum ++) {
-        off_t phoff = elf->e_phoff + sizeof(struct proghdr) * phnum;
+        off_t phoff = elf->e_phoff + sizeof(struct proghdr) * phnum;// 计算程序段头的偏移量
+        // 从文件中读取程序段头的内容
         if ((ret = load_icode_read(fd, ph, sizeof(struct proghdr), phoff)) != 0) {
             goto bad_cleanup_mmap;
         }
         //(3.4) find every program section headers
-        if (ph->p_type != ELF_PT_LOAD) {
-            continue ;
+          if (ph->p_type != ELF_PT_LOAD) {
+        continue ;
         }
+        // 检查 p_filesz 和 p_memsz 字段是否有效
         if (ph->p_filesz > ph->p_memsz) {
             ret = -E_INVAL_ELF;
             goto bad_cleanup_mmap;
         }
+        // 如果 p_filesz 为 0，则跳过，因为静态变量可能不占用任何空间
         if (ph->p_filesz == 0) {
             continue ;
-            // do nothing here since static variables may not occupy any space
+            // 这里不做任何处理，因为静态变量可能不占用任何空间
         }
         //(3.5) call mm_map fun to setup the new vma ( ph->p_va, ph->p_memsz)
         vm_flags = 0, perm = PTE_U | PTE_V;
@@ -702,18 +731,20 @@ load_icode(int fd, int argc, char **kargv) {
         end = ph->p_va + ph->p_filesz;
         //(3.6.1) copy TEXT/DATA section of bianry program
         while (start < end) {
-            if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {
-                ret = -E_NO_MEM;
-                goto bad_cleanup_mmap;
-            }
-            off = start - la, size = PGSIZE - off, la += PGSIZE;
-            if (end < la) {
-                size -= la - end;
-            }
-            if ((ret = load_icode_read(fd, page2kva(page) + off, size, offset)) != 0) {
-                goto bad_cleanup_mmap;
-            }
-            start += size, offset += size;
+        // 分配一个页面，并将其映射到合适的虚拟地址
+        if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {
+            ret = -E_NO_MEM;
+            goto bad_cleanup_mmap;
+        }
+        off = start - la, size = PGSIZE - off, la += PGSIZE;
+        if (end < la) {
+            size -= la - end;
+        }
+        // 从文件中读取程序段的内容，并将其复制到分配的页面中
+        if ((ret = load_icode_read(fd, page2kva(page) + off, size, offset)) != 0) {
+            goto bad_cleanup_mmap;
+        }
+        start += size, offset += size;
         }
         //(3.6.2) build BSS section of binary program
         end = ph->p_va + ph->p_memsz;
@@ -765,18 +796,22 @@ load_icode(int fd, int argc, char **kargv) {
         argv_size += strnlen(kargv[i],EXEC_MAX_ARG_LEN + 1)+1;
     }
 
+    // 计算栈顶位置
     uintptr_t stacktop = USTACKTOP - (argv_size/sizeof(long)+1)*sizeof(long);
+    // 将参数列表（uargv）放置在栈上
     char** uargv=(char **)(stacktop  - argc * sizeof(char *));
-    
     argv_size = 0;
     for (i = 0; i < argc; i ++) {
+        // 将参数字符串依次拷贝到栈上，并更新参数列表
         uargv[i] = strcpy((char *)(stacktop + argv_size ), kargv[i]);
         argv_size +=  strnlen(kargv[i],EXEC_MAX_ARG_LEN + 1)+1;
     }
-    
+
+    // 将参数个数 argc 放置在栈顶，并更新栈顶位置
     stacktop = (uintptr_t)uargv - sizeof(int);
     *(int *)stacktop = argc;
-    
+
+    // 获取当前进程的陷阱帧指针
     struct trapframe *tf = current->tf;
     // Keep sstatus
     uintptr_t sstatus = tf->status;

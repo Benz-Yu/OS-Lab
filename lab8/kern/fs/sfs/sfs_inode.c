@@ -255,42 +255,41 @@ failed_cleanup:
  */
 static int
 sfs_bmap_get_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index, bool create, uint32_t *ino_store) {
-    struct sfs_disk_inode *din = sin->din;
-    int ret;
-    uint32_t ent, ino;
-	// the index of disk block is in the fist SFS_NDIRECT  direct blocks
-    if (index < SFS_NDIRECT) {
-        if ((ino = din->direct[index]) == 0 && create) {
-            if ((ret = sfs_block_alloc(sfs, &ino)) != 0) {
-                return ret;
+    struct sfs_disk_inode *din = sin->din;  // 获取inode对应的磁盘inode结构体指针
+    int ret;  // 定义返回值
+    uint32_t ent, ino;  // 定义块号和表项号
+	// the index of disk block is in the fist SFS_NDIRECT direct blocks
+    if (index < SFS_NDIRECT) {  // 若索引在直接块范围内
+        if ((ino = din->direct[index]) == 0 && create) {  // 若块号为0且需要创建新块
+            if ((ret = sfs_block_alloc(sfs, &ino)) != 0) {  // 分配新块
+                return ret;  // 若分配失败则直接返回错误码
             }
-            din->direct[index] = ino;
-            sin->dirty = 1;
+            din->direct[index] = ino;  // 更新inode中的直接块信息
+            sin->dirty = 1;  // 标记inode为脏
         }
-        goto out;
+        goto out;  // 跳转至out标签处
     }
     // the index of disk block is in the indirect blocks.
-    index -= SFS_NDIRECT;
-    if (index < SFS_BLK_NENTRY) {
-        ent = din->indirect;
-        if ((ret = sfs_bmap_get_sub_nolock(sfs, &ent, index, create, &ino)) != 0) {
-            return ret;
+    index -= SFS_NDIRECT;  // 减去直接块的数量，得到间接块的索引
+    if (index < SFS_BLK_NENTRY) {  // 若索引在间接块表项范围内
+        ent = din->indirect;  // 获取间接块表的块号
+        if ((ret = sfs_bmap_get_sub_nolock(sfs, &ent, index, create, &ino)) != 0) {  // 调用sfs_bmap_get_sub_nolock获取块号
+            return ret;  // 若获取失败则直接返回错误码
         }
-        if (ent != din->indirect) {
-            assert(din->indirect == 0);
-            din->indirect = ent;
-            sin->dirty = 1;
+        if (ent != din->indirect) {  // 若表项块号发生变化
+            assert(din->indirect == 0);  // 确保间接块表为空
+            din->indirect = ent;  // 更新inode中的间接块表块号
+            sin->dirty = 1;  // 标记inode为脏
         }
-        goto out;
+        goto out;  // 跳转至out标签处
     } else {
-		panic ("sfs_bmap_get_nolock - index out of range");
+		panic ("sfs_bmap_get_nolock - index out of range");  // 若索引超出范围，则触发断言错误
 	}
 out:
-    assert(ino == 0 || sfs_block_inuse(sfs, ino));
-    *ino_store = ino;
-    return 0;
+    assert(ino == 0 || sfs_block_inuse(sfs, ino));  // 确保块号合法或者对应的块已被使用
+    *ino_store = ino;  // 将块号存储到指定位置
+    return 0;  // 返回成功
 }
-
 /*
  * sfs_bmap_free_sub_nolock - set the entry item to 0 (free) in the indirect block
  */
@@ -352,22 +351,22 @@ sfs_bmap_free_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index) 
  */
 static int
 sfs_bmap_load_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index, uint32_t *ino_store) {
-    struct sfs_disk_inode *din = sin->din;
-    assert(index <= din->blocks);
-    int ret;
-    uint32_t ino;
-    bool create = (index == din->blocks);
-    if ((ret = sfs_bmap_get_nolock(sfs, sin, index, create, &ino)) != 0) {
-        return ret;
+    struct sfs_disk_inode *din = sin->din;  // 获取inode对应的磁盘inode结构体指针
+    assert(index <= din->blocks);  // 确保index不超过文件的块数
+    int ret;  // 定义返回值
+    uint32_t ino;  // 定义块号
+    bool create = (index == din->blocks);  // 判断是否需要创建新块
+    if ((ret = sfs_bmap_get_nolock(sfs, sin, index, create, &ino)) != 0) {  // 调用sfs_bmap_get_nolock获取块号
+        return ret;  // 若获取失败则直接返回错误码
     }
-    assert(sfs_block_inuse(sfs, ino));
-    if (create) {
-        din->blocks ++;
+    assert(sfs_block_inuse(sfs, ino));  // 确保块号对应的块已被使用
+    if (create) {  // 若需要创建新块
+        din->blocks ++;  // 更新文件的块数
     }
-    if (ino_store != NULL) {
-        *ino_store = ino;
+    if (ino_store != NULL) {  // 若传入的块号存储指针不为空
+        *ino_store = ino;  // 将块号存储到指定位置
     }
-    return 0;
+    return 0;  // 返回成功
 }
 
 /*
@@ -551,109 +550,107 @@ sfs_close(struct inode *node) {
  */
 static int
 sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset, size_t *alenp, bool write) {
-    struct sfs_disk_inode *din = sin->din;
-    assert(din->type != SFS_TYPE_DIR);
-    off_t endpos = offset + *alenp, blkoff;
-    *alenp = 0;
-	// calculate the Rd/Wr end position
-    if (offset < 0 || offset >= SFS_MAX_FILE_SIZE || offset > endpos) {
+    struct sfs_disk_inode *din = sin->din;  // 获取文件的磁盘inode
+    assert(din->type != SFS_TYPE_DIR);  // 断言文件类型不是目录
+    off_t endpos = offset + *alenp, blkoff;  // 计算Rd/Wr操作的结束位置
+    *alenp = 0;  // 将*alenp置零
+    // calculate the Rd/Wr end position
+    if (offset < 0 || offset >= SFS_MAX_FILE_SIZE || offset > endpos) {  // 如果offset小于0，或者大于等于SFS_MAX_FILE_SIZE，或者大于endpos，则返回-E_INVAL
         return -E_INVAL;
     }
-    if (offset == endpos) {
+    if (offset == endpos) {  // 如果offset等于endpos，则返回0
         return 0;
     }
-    if (endpos > SFS_MAX_FILE_SIZE) {
+    if (endpos > SFS_MAX_FILE_SIZE) {  // 如果endpos大于SFS_MAX_FILE_SIZE，则将endpos设为SFS_MAX_FILE_SIZE
         endpos = SFS_MAX_FILE_SIZE;
     }
-    if (!write) {
-        if (offset >= din->size) {
+    if (!write) {  // 若不是写操作
+        if (offset >= din->size) {  // 若offset大于等于文件大小，则返回0
             return 0;
         }
-        if (endpos > din->size) {
+        if (endpos > din->size) {  // 若endpos大于文件大小，则将endpos设为文件大小
             endpos = din->size;
         }
     }
 
-    int (*sfs_buf_op)(struct sfs_fs *sfs, void *buf, size_t len, uint32_t blkno, off_t offset);
-    int (*sfs_block_op)(struct sfs_fs *sfs, void *buf, uint32_t blkno, uint32_t nblks);
-    if (write) {
-        sfs_buf_op = sfs_wbuf, sfs_block_op = sfs_wblock;
+    int (*sfs_buf_op)(struct sfs_fs *sfs, void *buf, size_t len, uint32_t blkno, off_t offset);  // 函数指针，指向读写缓冲区操作函数
+    int (*sfs_block_op)(struct sfs_fs *sfs, void *buf, uint32_t blkno, uint32_t nblks);  // 函数指针，指向读写块操作函数
+    if (write) {  // 若是写操作
+        sfs_buf_op = sfs_wbuf, sfs_block_op = sfs_wblock;  // 设置函数指针指向写缓冲区操作和写块操作函数
     }
-    else {
-        sfs_buf_op = sfs_rbuf, sfs_block_op = sfs_rblock;
+    else {  // 若是读操作
+        sfs_buf_op = sfs_rbuf, sfs_block_op = sfs_rblock;  // 设置函数指针指向读缓冲区操作和读块操作函数
     }
 
-    int ret = 0;
-    size_t size, alen = 0;
-    uint32_t ino;
-    uint32_t blkno = offset / SFS_BLKSIZE;          // The NO. of Rd/Wr begin block
-    uint32_t nblks = endpos / SFS_BLKSIZE - blkno;  // The size of Rd/Wr blocks
+    int ret = 0;  // 定义返回值
+    size_t size, alen = 0;  // 定义size和alen变量
+    uint32_t ino;  // 定义inode号
+    uint32_t blkno = offset / SFS_BLKSIZE;  // 计算Rd/Wr操作开始的块号
+    uint32_t nblks = endpos / SFS_BLKSIZE - blkno;  // 计算Rd/Wr操作涉及的块数
 
-  //LAB8:EXERCISE1 YOUR CODE HINT: call sfs_bmap_load_nolock, sfs_rbuf, sfs_rblock,etc. read different kind of blocks in file
-	/*2113870 2113683 1910109
-	 * (1) If offset isn't aligned with the first block, Rd/Wr some content from offset to the end of the first block
-	 *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_buf_op
-	 *               Rd/Wr size = (nblks != 0) ? (SFS_BLKSIZE - blkoff) : (endpos - offset)
-	 * (2) Rd/Wr aligned blocks 
-	 *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_block_op
+    //LAB8:EXERCISE1 YOUR CODE HINT: call sfs_bmap_load_nolock, sfs_rbuf, sfs_rblock,etc. read different kind of blocks in file
+    /*2113870 2113683 1910109
+     * (1) If offset isn't aligned with the first block, Rd/Wr some content from offset to the end of the first block
+     *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_buf_op
+     *               Rd/Wr size = (nblks != 0) ? (SFS_BLKSIZE - blkoff) : (endpos - offset)
+     * (2) Rd/Wr aligned blocks 
+     *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_block_op
      * (3) If end position isn't aligned with the last block, Rd/Wr some content from begin to the (endpos % SFS_BLKSIZE) of the last block
-	 *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_buf_op	
-	*/
+     *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_buf_op
+    */
   // (1)第一部分，用offset % SFS_BLKSIZE判断是否对齐，
   // 若没有对齐，则需要特殊处理，首先通过sfs_bmap_load_nolock找到这一块的inode，然后将这部分数据读出。
-    if ((blkoff = offset % SFS_BLKSIZE) != 0) {
-        size = (nblks != 0) ? (SFS_BLKSIZE - blkoff) : (endpos - offset);
-        if ((ret = sfs_bmap_load_nolock(sfs, sin, blkno, &ino)) != 0) {
+    if ((blkoff = offset % SFS_BLKSIZE) != 0) {  // 计算偏移量blkoff
+        size = (nblks != 0) ? (SFS_BLKSIZE - blkoff) : (endpos - offset);  // 计算Rd/Wr的大小
+        if ((ret = sfs_bmap_load_nolock(sfs, sin, blkno, &ino)) != 0) {  // 调用sfs_bmap_load_nolock函数获取块号对应的inode
             goto out;
         }
-        if ((ret = sfs_buf_op(sfs, buf, size, ino, blkoff)) != 0) {
-            goto out;
-        }
-
-        alen += size;
-        buf += size;
-
-        if (nblks == 0) {
+        if ((ret = sfs_buf_op(sfs, buf, size, ino, blkoff)) != 0) {  // 调用缓冲区操作函数读取数据
             goto out;
         }
 
-        blkno++;
-        nblks--;
+        alen += size;  // 更新已处理数据大小
+        buf += size;  // 调整缓冲区指针位置
+
+        if (nblks == 0) {  // 如果没有剩余块，则跳转到out标签
+            goto out;
+        }
+
+        blkno++;  // 更新块号
+        nblks--;  // 更新剩余块数
     }
 
-    if (nblks > 0) {
-        if ((ret = sfs_bmap_load_nolock(sfs, sin, blkno, &ino)) != 0) {
+    if (nblks > 0) {  // 如果还有剩余块
+        if ((ret = sfs_bmap_load_nolock(sfs, sin, blkno, &ino)) != 0) {  // 调用sfs_bmap_load_nolock函数获取块号对应的inode
             goto out;
         }
-        if ((ret = sfs_block_op(sfs, buf, ino, nblks)) != 0) {
+        if ((ret = sfs_block_op(sfs, buf, ino, nblks)) != 0) {  // 调用块操作函数读取数据
             goto out;
         }
 
-        alen += nblks * SFS_BLKSIZE;
-        buf += nblks * SFS_BLKSIZE;
-        blkno += nblks;
-        nblks -= nblks;
+        alen += nblks * SFS_BLKSIZE;  // 更新已处理数据大小
+        buf += nblks * SFS_BLKSIZE;  // 调整缓冲区指针位置
+        blkno += nblks;  // 更新块号
+        nblks -= nblks;  // 更新剩余块数
     }
 
-    if ((size = endpos % SFS_BLKSIZE) != 0) {
-        if ((ret = sfs_bmap_load_nolock(sfs, sin, blkno, &ino)) != 0) {
+    if ((size = endpos % SFS_BLKSIZE) != 0) {  // 如果endpos没有与最后一个块对齐
+        if ((ret = sfs_bmap_load_nolock(sfs, sin, blkno, &ino)) != 0) {  // 调用sfs_bmap_load_nolock函数获取块号对应的inode
             goto out;
         }
-        if ((ret = sfs_buf_op(sfs, buf, size, ino, 0)) != 0) {
+        if ((ret = sfs_buf_op(sfs, buf, size, ino, 0)) != 0) {  // 调用缓冲区操作函数读取数据
             goto out;
         }
-        alen += size;
+        alen += size;  // 更新已处理数据大小
     }
-
-    
 
 out:
-    *alenp = alen;
-    if (offset + alen > sin->din->size) {
-        sin->din->size = offset + alen;
-        sin->dirty = 1;
+    *alenp = alen;  // 更新*alenp
+    if (offset + alen > sin->din->size) {  // 如果处理后的文件大小大于原文件大小
+        sin->din->size = offset + alen;  // 更新文件大小
+        sin->dirty = 1;  // 标记inode为脏
     }
-    return ret;
+    return ret;  // 返回结果
 }
 
 /*

@@ -1,5 +1,5 @@
 
-obj/__user_exit.out：     文件格式 elf64-littleriscv
+obj/__user_exit.out:     file format elf64-littleriscv
 
 
 Disassembly of section .text:
